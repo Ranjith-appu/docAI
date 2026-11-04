@@ -1,0 +1,60 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: docai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: docai_user
+      POSTGRES_PASSWORD: docai_secure_password_2026
+      POSTGRES_DB: docai_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docai_user -d docai_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.backend
+    container_name: docai-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://docai_user:docai_secure_password_2026@postgres:5432/docai_db
+      - JWT_SECRET=production-super-secret-docai-jwt-key-2026-xyz
+      - STORAGE_PROVIDER=local
+      - STORAGE_DIR=/app/storage/uploads
+      - BLOCKCHAIN_PROVIDER=local_evm
+      - BLOCKCHAIN_RPC_URL=https://rpc.sepolia.org
+      - BLOCKCHAIN_CONTRACT_ADDRESS=0x71C67e3FeB8Ab7e06a3B81C437e54F264DeEb852
+      - BLOCKCHAIN_PRIVATE_KEY=0x0000000000000000000000000000000000000000000000000000000000000001
+    ports:
+      - "8000:8000"
+    volumes:
+      - docai_storage:/app/storage/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.frontend
+    container_name: docai-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  docai_storage:
