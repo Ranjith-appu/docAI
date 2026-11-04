@@ -1,0 +1,119 @@
+"use client";
+
+import React, { useState } from "react";
+import { AlertCircle, Eye, ZoomIn, ShieldAlert } from "lucide-react";
+import { SuspiciousRegionItem, TamperingResultData } from "../types";
+
+interface ForensicsViewerProps {
+  documentImageUrl: string;
+  tamperingResult?: TamperingResultData;
+  documentType?: string;
+}
+
+export const ForensicsViewer: React.FC<ForensicsViewerProps> = ({
+  documentImageUrl,
+  tamperingResult,
+  documentType = "Document",
+}) => {
+  const [showOverlays, setShowOverlays] = useState(true);
+  const [selectedRegion, setSelectedRegion] = useState<SuspiciousRegionItem | null>(null);
+
+  const regions = tamperingResult?.suspicious_regions || [];
+  const indicators = tamperingResult?.detected_indicators || [];
+
+  return (
+    <div className="space-y-4">
+      {/* Controls */}
+      <div className="flex items-center justify-between bg-slate-900/80 px-4 py-2.5 rounded-lg border border-slate-800">
+        <div className="flex items-center space-x-2">
+          <Eye className="w-4 h-4 text-blue-400" />
+          <span className="text-xs font-semibold text-slate-200">Forensic Overlay Inspector</span>
+        </div>
+        <button
+          onClick={() => setShowOverlays(!showOverlays)}
+          className={`text-xs px-3 py-1 rounded-md font-mono transition-colors ${
+            showOverlays
+              ? "bg-blue-600 text-white"
+              : "bg-slate-800 text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          {showOverlays ? "Overlays: ON" : "Overlays: OFF"}
+        </button>
+      </div>
+
+      {/* Image with Bounding Boxes */}
+      <div className="relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950 flex items-center justify-center min-h-[320px]">
+        {/* Document Image */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={documentImageUrl}
+          alt={documentType}
+          className="max-h-[420px] w-auto object-contain rounded-lg select-none"
+        />
+
+        {/* Bounding Box Overlays */}
+        {showOverlays &&
+          regions.map((reg, idx) => {
+            // Normalize coordinate representation assuming standard 750x500 canvas
+            const leftPct = (reg.x / 750) * 100;
+            const topPct = (reg.y / 500) * 100;
+            const widthPct = (reg.width / 750) * 100;
+            const heightPct = (reg.height / 500) * 100;
+
+            const isSelected = selectedRegion === reg;
+
+            return (
+              <div
+                key={idx}
+                onClick={() => setSelectedRegion(reg)}
+                style={{
+                  left: `${leftPct}%`,
+                  top: `${topPct}%`,
+                  width: `${widthPct}%`,
+                  height: `${heightPct}%`,
+                }}
+                className={`absolute cursor-pointer border-2 transition-all ${
+                  isSelected
+                    ? "border-rose-400 bg-rose-500/25 ring-2 ring-rose-400"
+                    : "border-rose-500/80 bg-rose-500/10 hover:border-rose-400 hover:bg-rose-500/20"
+                }`}
+              >
+                <span className="absolute -top-5 left-0 px-1.5 py-0.5 bg-rose-600 text-[10px] font-bold text-white rounded shadow uppercase">
+                  {reg.indicator}
+                </span>
+              </div>
+            );
+          })}
+      </div>
+
+      {/* Forensic Details */}
+      {selectedRegion && (
+        <div className="p-3.5 rounded-lg bg-rose-950/40 border border-rose-800/80 text-xs space-y-1 animate-fadeIn">
+          <div className="flex items-center space-x-2 text-rose-300 font-bold">
+            <ShieldAlert className="w-4 h-4" />
+            <span>{selectedRegion.indicator} (Suspicion: {selectedRegion.anomaly_score}%)</span>
+          </div>
+          <p className="text-slate-300">{selectedRegion.explanation}</p>
+        </div>
+      )}
+
+      {/* Indicators List */}
+      {indicators.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-slate-300">Detected Digital Anomaly Indicators:</p>
+          <div className="space-y-1.5">
+            {indicators.map((ind, i) => (
+              <div
+                key={i}
+                className="flex items-start space-x-2 text-xs text-amber-300 bg-amber-950/40 px-3 py-2 rounded-md border border-amber-900/60"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{ind}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
