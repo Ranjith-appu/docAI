@@ -1,0 +1,68 @@
+"use client";
+
+import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard,
+  FileCheck2,
+  FolderLock,
+  Boxes,
+  LineChart,
+  ScrollText,
+  Sliders,
+  ShieldAlert,
+} from "lucide-react";
+
+export const Sidebar: React.FC = () => {
+  const pathname = usePathname();
+
+  const navItems = [
+    { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { label: "New Screening", href: "/screening", icon: FileCheck2 },
+    { label: "Screening Cases", href: "/cases", icon: FolderLock },
+    { label: "Blockchain Verify", href: "/blockchain/verify", icon: Boxes },
+    { label: "Analytics", href: "/analytics", icon: LineChart },
+    { label: "Audit Trail", href: "/audit", icon: ScrollText },
+    { label: "Rules & Policies", href: "/rules", icon: Sliders },
+  ];
+
+  return (
+    <aside className="w-64 border-r border-slate-800 bg-slate-950 flex flex-col min-h-[calc(100vh-4rem)]">
+      <div className="p-4 flex-1 space-y-1.5">
+        <div className="px-3 py-2 text-[11px] font-mono uppercase tracking-wider text-slate-400">
+          Security Operations
+        </div>
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname?.startsWith(item.href));
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                isActive
+                  ? "bg-blue-600/15 text-blue-400 border border-blue-500/30"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent"
+              }`}
+            >
+              <Icon className={`w-4 h-4 ${isActive ? "text-blue-400" : "text-slate-400"}`} />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Advisory Notice footer */}
+      <div className="p-4 border-t border-slate-900 bg-slate-950/60">
+        <div className="flex items-start space-x-2 text-[11px] text-slate-400">
+          <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <p className="leading-tight">
+            AI is for preliminary decision support. Final decisions require authorized human review.
+          </p>
+        </div>
+      </div>
+    </aside>
+  );
+};
