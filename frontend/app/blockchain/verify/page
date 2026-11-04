@@ -1,0 +1,245 @@
+"use client";
+
+import React, { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  Boxes,
+  ShieldCheck,
+  ShieldAlert,
+  Search,
+  CheckCircle2,
+  AlertTriangle,
+  Upload,
+  Cpu,
+  ExternalLink,
+} from "lucide-react";
+import { api } from "../../../services/api";
+import { StatusBadge } from "../../../components/StatusBadge";
+import { BlockchainVerifyResponse } from "../../../types";
+
+function BlockchainVerificationContent() {
+  const searchParams = useSearchParams();
+  const initialCaseNum = searchParams.get("case_number") || "";
+
+  const [caseNumber, setCaseNumber] = useState(initialCaseNum);
+  const [manualDocHash, setManualDocHash] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<BlockchainVerifyResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Compute live hash from uploaded file in browser if user uploads a file to verify
+  const handleFileUpload = async (file: File) => {
+    try {
+      const buffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+      setManualDocHash(hashHex);
+    } catch {
+      setError("Unable to compute SHA-256 hash in browser");
+    }
+  };
+
+  const handleVerify = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!caseNumber.trim() && !manualDocHash.trim()) {
+      setError("Please supply a Case Number or Document SHA-256 hash.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const res = await api.verifyBlockchain({
+        case_number: caseNumber.trim() || undefined,
+        document_hash: manualDocHash.trim() || undefined,
+      });
+      setResult(res);
+    } catch (err: any) {
+      setError(err.message || "Failed to query blockchain ledger.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialCaseNum) {
+      handleVerify();
+    }
+  }, [initialCaseNum]);
+
+  return (
+    <div className="space-y-8 max-w-4xl mx-auto">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-3">
+          <Boxes className="w-6 h-6 text-blue-400" />
+          <span>Blockchain Document Integrity Terminal</span>
+        </h1>
+        <p className="text-xs text-slate-400 mt-1">
+          Cryptographically compare any presented identity document against immutable proof anchored on Ethereum Sepolia
+        </p>
+      </div>
+
+      {error && (
+        <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-800 text-rose-300 text-xs flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-rose-400 hover:text-white ml-4">✕</button>
+        </div>
+      )}
+
+      {/* Verification Query Form */}
+      <form onSubmit={handleVerify} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5 shadow-xl">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+              Screening Case Number
+            </label>
+            <input
+              type="text"
+              value={caseNumber}
+              onChange={(e) => setCaseNumber(e.target.value)}
+              placeholder="e.g. SCR-2026-000101"
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-slate-100 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+              Or Manual SHA-256 Document Hash
+            </label>
+            <input
+              type="text"
+              value={manualDocHash}
+              onChange={(e) => setManualDocHash(e.target.value)}
+              placeholder="Paste SHA-256 hex..."
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 text-xs text-slate-100 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {/* Or upload local file to re-calculate hash on the fly */}
+        <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-xs text-slate-400">
+            <Upload className="w-4 h-4 text-blue-400" />
+            <span>Optionally select a local document to hash client-side:</span>
+          </div>
+          <input
+            type="file"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) handleFileUpload(f);
+            }}
+            className="text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:bg-slate-800 file:text-slate-200"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center justify-center space-x-2 shadow-lg shadow-blue-600/30 transition-all disabled:opacity-50"
+        >
+          <Search className="w-4 h-4" />
+          <span>{loading ? "Querying Blockchain Nodes..." : "Verify Cryptographic Proof"}</span>
+        </button>
+      </form>
+
+      {/* Verification Result Display */}
+      {result && (
+        <div
+          className={`rounded-2xl border p-6 space-y-6 shadow-2xl transition-all ${
+            result.matched
+              ? "bg-emerald-950/20 border-emerald-800/80 shadow-emerald-950/30"
+              : "bg-rose-950/25 border-rose-800/80 shadow-rose-950/30"
+          }`}
+        >
+          {/* Status Header */}
+          <div className="flex items-start justify-between">
+            <div className="flex items-center space-x-3">
+              {result.matched ? (
+                <div className="w-10 h-10 rounded-xl bg-emerald-600/30 border border-emerald-500 flex items-center justify-center">
+                  <ShieldCheck className="w-6 h-6 text-emerald-400" />
+                </div>
+              ) : (
+                <div className="w-10 h-10 rounded-xl bg-rose-600/30 border border-rose-500 flex items-center justify-center">
+                  <ShieldAlert className="w-6 h-6 text-rose-400" />
+                </div>
+              )}
+
+              <div>
+                <h2
+                  className={`text-lg font-bold font-mono tracking-tight ${
+                    result.matched ? "text-emerald-300" : "text-rose-300"
+                  }`}
+                >
+                  {result.matched
+                    ? "✓ DOCUMENT INTEGRITY VERIFIED"
+                    : "⚠ DOCUMENT INTEGRITY MISMATCH"}
+                </h2>
+                <p className="text-xs text-slate-300 mt-0.5">{result.details}</p>
+              </div>
+            </div>
+
+            <StatusBadge
+              status={result.status}
+              type={result.matched ? "match" : "risk"}
+            />
+          </div>
+
+          {/* Hashes Side-by-Side Comparison */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider">
+                Current Presented Document SHA-256
+              </span>
+              <p className="text-slate-100 font-bold break-all">{result.current_document_hash}</p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1.5">
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider">
+                Blockchain On-Chain Registered Hash
+              </span>
+              <p className="text-indigo-400 font-bold break-all">{result.blockchain_document_hash}</p>
+            </div>
+          </div>
+
+          {/* Ledger Proof Metadata */}
+          <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 font-mono text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400">Network / Ledger:</span>
+              <span className="text-blue-400">{result.network}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400">Smart Contract:</span>
+              <span className="text-slate-300 break-all">{result.contract_address}</span>
+            </div>
+            {result.block_timestamp && (
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Registered Timestamp:</span>
+                <span className="text-slate-300">
+                  {new Date(parseInt(result.block_timestamp) * 1000).toLocaleString()}
+                </span>
+              </div>
+            )}
+            {result.risk_score !== undefined && (
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Recorded Risk Index:</span>
+                <span className="text-slate-300 font-bold">{result.risk_score} / 100</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function BlockchainVerificationPage() {
+  return (
+    <Suspense fallback={<div className="p-12 text-center text-xs font-mono text-slate-500">Loading Blockchain Terminal...</div>}>
+      <BlockchainVerificationContent />
+    </Suspense>
+  );
+}
