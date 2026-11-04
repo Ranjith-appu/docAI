@@ -1,0 +1,103 @@
+import React from "react";
+import { AlertTriangle, ShieldCheck, ShieldAlert, AlertOctagon } from "lucide-react";
+
+interface RiskGaugeProps {
+  score: number;
+  classification: string;
+  recommendation?: string;
+  size?: "sm" | "md" | "lg";
+}
+
+export const RiskGauge: React.FC<RiskGaugeProps> = ({
+  score,
+  classification,
+  recommendation,
+  size = "md",
+}) => {
+  const normScore = Math.min(100, Math.max(0, score));
+
+  let color = "#10b981"; // Low
+  let textColor = "text-emerald-400";
+  let bgGlow = "shadow-emerald-500/20";
+  let Icon = ShieldCheck;
+
+  if (normScore >= 75) {
+    color = "#ef4444"; // Critical
+    textColor = "text-rose-400";
+    bgGlow = "shadow-rose-500/20";
+    Icon = AlertOctagon;
+  } else if (normScore >= 50) {
+    color = "#f97316"; // High
+    textColor = "text-orange-400";
+    bgGlow = "shadow-orange-500/20";
+    Icon = ShieldAlert;
+  } else if (normScore >= 25) {
+    color = "#f59e0b"; // Medium
+    textColor = "text-amber-400";
+    bgGlow = "shadow-amber-500/20";
+    Icon = AlertTriangle;
+  }
+
+  const radius = size === "lg" ? 54 : size === "sm" ? 32 : 44;
+  const stroke = size === "lg" ? 8 : size === "sm" ? 5 : 6;
+  const circumference = 2 * Math.PI * radius;
+  const strokeDashoffset = circumference - (normScore / 100) * circumference;
+
+  return (
+    <div className="flex items-center space-x-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+      <div className="relative flex items-center justify-center">
+        <svg
+          className="transform -rotate-90"
+          width={radius * 2 + stroke * 2}
+          height={radius * 2 + stroke * 2}
+        >
+          {/* Background circle */}
+          <circle
+            cx={radius + stroke}
+            cy={radius + stroke}
+            r={radius}
+            stroke="#1e293b"
+            strokeWidth={stroke}
+            fill="transparent"
+          />
+          {/* Progress circle */}
+          <circle
+            cx={radius + stroke}
+            cy={radius + stroke}
+            r={radius}
+            stroke={color}
+            strokeWidth={stroke}
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            fill="transparent"
+            className="transition-all duration-1000 ease-out"
+          />
+        </svg>
+        <div className="absolute flex flex-col items-center justify-center text-center">
+          <span className={`font-bold ${size === "lg" ? "text-2xl" : "text-xl"} ${textColor}`}>
+            {Math.round(normScore)}
+          </span>
+          <span className="text-[10px] uppercase tracking-wider text-slate-400">/ 100</span>
+        </div>
+      </div>
+
+      <div className="flex-1">
+        <div className="flex items-center space-x-2">
+          <Icon className={`w-4 h-4 ${textColor}`} />
+          <span className={`text-sm font-bold tracking-wide uppercase ${textColor}`}>
+            {classification} RISK
+          </span>
+        </div>
+        {recommendation && (
+          <p className="text-xs text-slate-300 mt-1 font-medium leading-relaxed">
+            {recommendation}
+          </p>
+        )}
+        <p className="text-[11px] text-slate-400 mt-0.5">
+          Advisory AI decision-support indicator
+        </p>
+      </div>
+    </div>
+  );
+};
