@@ -1,0 +1,30 @@
+import "./globals.css";
+import React from "react";
+import type { Metadata } from "next";
+import { Navbar } from "../components/Navbar";
+import { Sidebar } from "../components/Sidebar";
+
+export const metadata: Metadata = {
+  title: "DocAI - Fake Identity & Document Screening System",
+  description: "AI-based Fake Identity & Document Screening System with Blockchain and Cybersecurity",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en" className="dark">
+      <body className="bg-slate-950 text-slate-100 min-h-screen flex flex-col">
+        <Navbar />
+        <div className="flex flex-1">
+          <Sidebar />
+          <main className="flex-1 p-6 md:p-8 overflow-y-auto max-w-7xl mx-auto w-full">
+            {children}
+          </main>
+        </div>
+      </body>
+    </html>
+  );
+}
