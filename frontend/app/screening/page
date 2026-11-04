@@ -1,0 +1,1084 @@
+"use client";
+
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  FileCheck,
+  Upload,
+  ScanText,
+  CheckCheck,
+  SearchCode,
+  Fingerprint,
+  Scale,
+  Boxes,
+  UserCheck,
+  ArrowRight,
+  ArrowLeft,
+  Download,
+  AlertTriangle,
+  CheckCircle2,
+  Cpu,
+  Layers,
+  Sparkles,
+} from "lucide-react";
+import { api } from "../../services/api";
+import { StatusBadge } from "../../components/StatusBadge";
+import { RiskGauge } from "../../components/RiskGauge";
+import { ForensicsViewer } from "../../components/ForensicsViewer";
+import {
+  CaseItem,
+  DocumentItem,
+  OCRResultData,
+  ValidationResultData,
+  TamperingResultData,
+  FaceVerificationData,
+  RiskAssessmentData,
+  BlockchainRecordData,
+  OfficerReviewData,
+} from "../../types";
+
+const STEPS = [
+  { id: 1, name: "Create Case", icon: FileCheck },
+  { id: 2, name: "Upload Documents", icon: Upload },
+  { id: 3, name: "OCR Extraction", icon: ScanText },
+  { id: 4, name: "Validation", icon: CheckCheck },
+  { id: 5, name: "AI Tampering", icon: SearchCode },
+  { id: 6, name: "Face Biometrics", icon: Fingerprint },
+  { id: 7, name: "Risk Engine", icon: Scale },
+  { id: 8, name: "Blockchain Proof", icon: Boxes },
+  { id: 9, name: "Officer Decision", icon: UserCheck },
+];
+
+export default function ScreeningWizardPage() {
+  const router = useRouter();
+  const [currentStep, setCurrentStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Wizard state
+  const [applicantName, setApplicantName] = useState("JOHN DOE");
+  const [documentType, setDocumentType] = useState("PASSPORT");
+
+  const [activeCase, setActiveCase] = useState<CaseItem | null>(null);
+  const [uploadedDocs, setUploadedDocs] = useState<DocumentItem[]>([]);
+
+  // Files for upload
+  const [passportFile, setPassportFile] = useState<File | null>(null);
+  const [visaFile, setVisaFile] = useState<File | null>(null);
+  const [selfieFile, setSelfieFile] = useState<File | null>(null);
+
+  // Pipeline Results
+  const [ocrResult, setOcrResult] = useState<OCRResultData | null>(null);
+  const [valResult, setValResult] = useState<ValidationResultData | null>(null);
+  const [tampResult, setTampResult] = useState<TamperingResultData | null>(null);
+  const [faceResult, setFaceResult] = useState<FaceVerificationData | null>(null);
+  const [riskResult, setRiskResult] = useState<RiskAssessmentData | null>(null);
+  const [blockchainResult, setBlockchainResult] = useState<BlockchainRecordData | null>(null);
+  const [officerDecision, setOfficerDecision] = useState("VERIFIED");
+  const [officerNotes, setOfficerNotes] = useState("");
+  const [reviewResult, setReviewResult] = useState<OfficerReviewData | null>(null);
+
+  // Helper to load synthetic demo documents automatically
+  const handleLoadSyntheticPreset = async (preset: "verified" | "suspicious" | "high_risk") => {
+    setLoading(true);
+    setError(null);
+    try {
+      let name = "JOHN DOE";
+      if (preset === "suspicious") name = "JANE SMITH";
+      if (preset === "high_risk") name = "ALEX RIVERA";
+
+      setApplicantName(name);
+
+      // Create case
+      const newCase = await api.createCase(`${name} (DEMO)`, "PASSPORT");
+      setActiveCase(newCase);
+
+      // Upload synthetic demo files via backend seeder or generate blob
+      // Call seed endpoint
+      await api.seedDemoCases();
+      const allCases = await api.getCases();
+      const matched = allCases.find((c) => c.applicant_name.includes(name));
+      if (matched) {
+        const fullDossier = await api.getCase(matched.id);
+        setActiveCase(fullDossier.case);
+        setUploadedDocs(fullDossier.documents);
+        if (fullDossier.ocr_results?.length) setOcrResult(fullDossier.ocr_results[0]);
+        if (fullDossier.validation) setValResult(fullDossier.validation);
+        if (fullDossier.tampering_results?.length) setTampResult(fullDossier.tampering_results[0]);
+        if (fullDossier.face_verification) setFaceResult(fullDossier.face_verification);
+        if (fullDossier.risk_assessment) setRiskResult(fullDossier.risk_assessment);
+        if (fullDossier.blockchain_record) setBlockchainResult(fullDossier.blockchain_record);
+        if (fullDossier.officer_review) {
+          setOfficerDecision(fullDossier.officer_review.decision);
+          setOfficerNotes(fullDossier.officer_review.notes || "");
+          setReviewResult(fullDossier.officer_review);
+        }
+        setCurrentStep(3); // Jump to OCR view
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load preset");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 1: Create Case
+  const handleStep1CreateCase = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const created = await api.createCase(applicantName, documentType);
+      setActiveCase(created);
+      setCurrentStep(2);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 2: Upload Documents
+  const handleStep2UploadDocs = async () => {
+    if (!activeCase) return;
+    if (!passportFile && uploadedDocs.length === 0) {
+      setError("Please select at least a primary Passport / ID document to upload.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const docs: DocumentItem[] = [...uploadedDocs];
+      if (passportFile) {
+        const pDoc = await api.uploadDocument(activeCase.id, documentType, passportFile);
+        docs.push(pDoc);
+      }
+      if (visaFile) {
+        const vDoc = await api.uploadDocument(activeCase.id, "VISA", visaFile);
+        docs.push(vDoc);
+      }
+      if (selfieFile) {
+        const fDoc = await api.uploadDocument(activeCase.id, "PRESENTED_FACE", selfieFile);
+        docs.push(fDoc);
+      }
+      setUploadedDocs(docs);
+      setCurrentStep(3);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 3: Run OCR
+  const handleStep3RunOCR = async () => {
+    const primaryDoc = uploadedDocs.find((d) => d.document_type !== "PRESENTED_FACE") || uploadedDocs[0];
+    if (!primaryDoc) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.runOCR(primaryDoc.id);
+      setOcrResult(res);
+      setCurrentStep(4);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 4: Run Validation
+  const handleStep4RunValidation = async () => {
+    if (!activeCase) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.runValidation(activeCase.id);
+      setValResult(res);
+      setCurrentStep(5);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 5: Run Tampering Forensics
+  const handleStep5RunTampering = async () => {
+    const primaryDoc = uploadedDocs.find((d) => d.document_type !== "PRESENTED_FACE") || uploadedDocs[0];
+    if (!primaryDoc) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.runTampering(primaryDoc.id);
+      setTampResult(res);
+      setCurrentStep(6);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 6: Run Face Verification
+  const handleStep6RunFace = async () => {
+    if (!activeCase) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.runFaceVerification(activeCase.id);
+      setFaceResult(res);
+      setCurrentStep(7);
+    } catch (err: any) {
+      // If face image not present, allow skip with advisory note
+      setError(`Face check: ${err.message}. (Upload a Presented Face selfie in Step 2 to enable verification).`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 7: Run Risk Analysis
+  const handleStep7RunRisk = async () => {
+    if (!activeCase) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.runRiskAnalysis(activeCase.id);
+      setRiskResult(res);
+      setCurrentStep(8);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 8: Register on Blockchain
+  const handleStep8BlockchainRegister = async () => {
+    if (!activeCase) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.registerBlockchain(activeCase.id);
+      setBlockchainResult(res);
+      setCurrentStep(9);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 9: Submit Review
+  const handleStep9SubmitReview = async () => {
+    if (!activeCase) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.submitReview(activeCase.id, officerDecision, officerNotes);
+      setReviewResult(res);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDownloadPDF = () => {
+    if (!activeCase) return;
+    api.downloadReport(activeCase.id, activeCase.case_number);
+  };
+
+  return (
+    <div className="space-y-8 max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Identity Screening Wizard</h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Automated step-by-step verification pipeline: OCR, Forensics, Biometrics, and Blockchain Anchoring
+          </p>
+        </div>
+
+        {/* Synthetic Demo Presets */}
+        <div className="flex items-center space-x-2 bg-slate-900 border border-slate-800 p-1.5 rounded-lg">
+          <span className="text-[11px] font-mono text-slate-400 pl-2 pr-1">Load Demo:</span>
+          <button
+            onClick={() => handleLoadSyntheticPreset("verified")}
+            className="px-2.5 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900 text-emerald-300 text-xs font-medium border border-emerald-800/80 transition-colors"
+          >
+            Verified Case
+          </button>
+          <button
+            onClick={() => handleLoadSyntheticPreset("suspicious")}
+            className="px-2.5 py-1 rounded bg-amber-950/60 hover:bg-amber-900 text-amber-300 text-xs font-medium border border-amber-800/80 transition-colors"
+          >
+            Suspicious Case
+          </button>
+          <button
+            onClick={() => handleLoadSyntheticPreset("high_risk")}
+            className="px-2.5 py-1 rounded bg-rose-950/60 hover:bg-rose-900 text-rose-300 text-xs font-medium border border-rose-800/80 transition-colors"
+          >
+            High Risk Case
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="p-3.5 rounded-xl bg-rose-950/70 border border-rose-800 text-rose-300 text-xs flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-rose-400 hover:text-white ml-4">✕</button>
+        </div>
+      )}
+
+      {/* Wizard Step Progress Bar */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 overflow-x-auto">
+        <div className="flex items-center justify-between min-w-[720px]">
+          {STEPS.map((s) => {
+            const Icon = s.icon;
+            const isDone = s.id < currentStep;
+            const isCurrent = s.id === currentStep;
+
+            return (
+              <button
+                key={s.id}
+                onClick={() => {
+                  if (isDone || isCurrent) setCurrentStep(s.id);
+                }}
+                className={`flex flex-col items-center space-y-1.5 px-3 py-1.5 rounded-lg transition-all ${
+                  isCurrent
+                    ? "bg-blue-600/20 text-blue-400 border border-blue-500/40"
+                    : isDone
+                    ? "text-emerald-400 hover:bg-slate-800"
+                    : "text-slate-500 cursor-not-allowed"
+                }`}
+              >
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-mono font-bold ${
+                    isCurrent
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-500/30"
+                      : isDone
+                      ? "bg-emerald-600/30 text-emerald-400 border border-emerald-500/50"
+                      : "bg-slate-800 text-slate-500"
+                  }`}
+                >
+                  {isDone ? "✓" : s.id}
+                </div>
+                <span className="text-[11px] font-medium whitespace-nowrap">{s.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Step Content Canvas */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 shadow-xl min-h-[420px]">
+        {/* STEP 1: CREATE CASE */}
+        {currentStep === 1 && (
+          <div className="max-w-lg mx-auto space-y-6">
+            <div>
+              <h2 className="text-lg font-bold text-white">Step 1: Create Screening Case</h2>
+              <p className="text-xs text-slate-400 mt-1">
+                Enter the applicant identity and primary travel document type to initialize an immutable screening docket.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Applicant Full Name
+                </label>
+                <input
+                  type="text"
+                  value={applicantName}
+                  onChange={(e) => setApplicantName(e.target.value)}
+                  placeholder="e.g. JOHN DOE"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-slate-100 uppercase font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Primary Document Type
+                </label>
+                <select
+                  value={documentType}
+                  onChange={(e) => setDocumentType(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-slate-100 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                >
+                  <option value="PASSPORT">Passport (ICAO 9303 Standard)</option>
+                  <option value="NATIONAL_ID">National ID Card</option>
+                  <option value="DRIVING_LICENSE">Driving License</option>
+                  <option value="VISA">Entry Visa</option>
+                  <option value="PERMIT">Residence / Work Permit</option>
+                </select>
+              </div>
+
+              <button
+                onClick={handleStep1CreateCase}
+                disabled={loading || !applicantName.trim()}
+                className="w-full py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm flex items-center justify-center space-x-2 shadow-lg shadow-blue-600/30 transition-all disabled:opacity-50"
+              >
+                <span>{loading ? "Creating Docket..." : "Generate Case & Proceed"}</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2: UPLOAD DOCUMENTS */}
+        {currentStep === 2 && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">Step 2: Upload Documents & Biometrics</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Attach the primary travel document, optional secondary visa/permit, and a live presented face photo.
+                </p>
+              </div>
+              {activeCase && (
+                <span className="font-mono text-xs px-2.5 py-1 rounded bg-blue-950 text-blue-300 border border-blue-800">
+                  Case: {activeCase.case_number}
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {/* Primary Document */}
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                <div className="flex items-center space-x-2 text-slate-300 font-semibold text-xs uppercase tracking-wider">
+                  <Upload className="w-4 h-4 text-blue-400" />
+                  <span>1. {documentType} (Required)</span>
+                </div>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,application/pdf"
+                  onChange={(e) => setPassportFile(e.target.files?.[0] || null)}
+                  className="text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500"
+                />
+                <p className="text-[11px] text-slate-400">Standard ICAO photo page or high-res scan</p>
+              </div>
+
+              {/* Secondary Document */}
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                <div className="flex items-center space-x-2 text-slate-300 font-semibold text-xs uppercase tracking-wider">
+                  <Layers className="w-4 h-4 text-indigo-400" />
+                  <span>2. Visa / Secondary Document</span>
+                </div>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,application/pdf"
+                  onChange={(e) => setVisaFile(e.target.files?.[0] || null)}
+                  className="text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700"
+                />
+                <p className="text-[11px] text-slate-400">Used for automated cross-document validation</p>
+              </div>
+
+              {/* Presented Face Selfie */}
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                <div className="flex items-center space-x-2 text-slate-300 font-semibold text-xs uppercase tracking-wider">
+                  <Fingerprint className="w-4 h-4 text-emerald-400" />
+                  <span>3. Presented Face Selfie</span>
+                </div>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  onChange={(e) => setSelfieFile(e.target.files?.[0] || null)}
+                  className="text-xs text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700"
+                />
+                <p className="text-[11px] text-slate-400">Live facial photo for 1:1 biometric comparison</p>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center pt-4">
+              <button
+                onClick={() => setCurrentStep(1)}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-300 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleStep2UploadDocs}
+                disabled={loading}
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-600/30 transition-all disabled:opacity-50"
+              >
+                <span>{loading ? "Encrypting & Uploading..." : "Upload & Run OCR"}</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: OCR PROCESSING */}
+        {currentStep === 3 && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">Step 3: OCR Data Extraction</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Machine reading extracted fields, MRZ verification, and character confidence rating.
+                </p>
+              </div>
+              <button
+                onClick={handleStep3RunOCR}
+                disabled={loading}
+                className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white shadow transition-all disabled:opacity-50"
+              >
+                {loading ? "Processing..." : "Re-extract OCR"}
+              </button>
+            </div>
+
+            {ocrResult ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between bg-slate-950 p-3 rounded-lg border border-slate-800">
+                  <span className="text-xs text-slate-400 font-mono">Engine: {ocrResult.provider}</span>
+                  <span className="text-xs font-mono font-bold text-emerald-400">
+                    Average Confidence: {ocrResult.average_confidence}%
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Object.entries(ocrResult.fields).map(([key, f]) => (
+                    <div
+                      key={key}
+                      className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between"
+                    >
+                      <div>
+                        <p className="text-[10px] font-mono text-slate-400 uppercase">{key.replace("_", " ")}</p>
+                        <p className="text-sm font-bold text-slate-100 font-mono">{f.value}</p>
+                      </div>
+                      <span className="text-xs font-mono text-blue-400 font-medium">
+                        {f.confidence.toFixed(1)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-2">
+                  <p className="text-[11px] font-mono text-slate-400 mb-1">Raw OCR Stream:</p>
+                  <pre className="p-3 bg-slate-950 border border-slate-800 rounded-lg text-[11px] font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap">
+                    {ocrResult.raw_text}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              <div className="py-12 text-center space-y-3">
+                <ScanText className="w-10 h-10 text-blue-400 mx-auto animate-pulse" />
+                <p className="text-sm text-slate-300">Ready to initiate OCR extraction.</p>
+                <button
+                  onClick={handleStep3RunOCR}
+                  disabled={loading}
+                  className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold"
+                >
+                  {loading ? "Reading Text..." : "Extract Text Now"}
+                </button>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center pt-4">
+              <button
+                onClick={() => setCurrentStep(2)}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-300 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleStep4RunValidation}
+                disabled={loading}
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-600/30 transition-all"
+              >
+                <span>Proceed to Field Validation</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 4: VALIDATION */}
+        {currentStep === 4 && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">Step 4: Document Validation & Cross-Check</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Format syntax, expiration dates, and multi-document consistency comparison.
+                </p>
+              </div>
+              {valResult && (
+                <StatusBadge status={valResult.passed ? "VERIFIED" : "SUSPICIOUS"} />
+              )}
+            </div>
+
+            {valResult ? (
+              <div className="space-y-4">
+                {valResult.errors.length > 0 && (
+                  <div className="p-4 rounded-lg bg-rose-950/50 border border-rose-800 text-rose-300 text-xs space-y-1">
+                    <p className="font-bold">Detected Mismatches / Formatting Flags:</p>
+                    {valResult.errors.map((err, i) => (
+                      <p key={i} className="font-mono">⚠ {err}</p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                    Executed Rule Verifications
+                  </p>
+                  <div className="divide-y divide-slate-800 border border-slate-800 rounded-xl overflow-hidden bg-slate-950">
+                    {valResult.rule_results.map((r, i) => (
+                      <div key={i} className="p-3 flex items-center justify-between text-xs">
+                        <div className="flex items-center space-x-2">
+                          <span className={r.passed ? "text-emerald-400" : "text-rose-400"}>
+                            {r.passed ? "✓" : "✗"}
+                          </span>
+                          <span className="text-slate-200 font-medium">{r.message}</span>
+                        </div>
+                        <span className="font-mono text-[10px] text-slate-500">{r.rule_name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="py-12 text-center space-y-3">
+                <CheckCheck className="w-10 h-10 text-blue-400 mx-auto animate-pulse" />
+                <p className="text-sm text-slate-300">Ready to run validation rules.</p>
+                <button
+                  onClick={handleStep4RunValidation}
+                  disabled={loading}
+                  className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold"
+                >
+                  {loading ? "Validating..." : "Execute Rules"}
+                </button>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center pt-4">
+              <button
+                onClick={() => setCurrentStep(3)}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-300 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleStep5RunTampering}
+                disabled={loading}
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-600/30 transition-all"
+              >
+                <span>Proceed to Tampering Forensics</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 5: TAMPERING FORENSICS */}
+        {currentStep === 5 && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">Step 5: AI Tampering Analysis</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Error Level Analysis (ELA), EXIF header analysis, and gradient discontinuity detection.
+                </p>
+              </div>
+              {tampResult && (
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-slate-400 font-mono">Suspicion Score:</span>
+                  <span className={`text-sm font-bold font-mono ${tampResult.tampering_score >= 50 ? "text-rose-400" : "text-emerald-400"}`}>
+                    {tampResult.tampering_score}%
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {tampResult ? (
+              <div className="space-y-6">
+                {/* Visual Forensics Viewer */}
+                {uploadedDocs.length > 0 && (
+                  <ForensicsViewer
+                    documentImageUrl={api.getDocumentFileUrl(uploadedDocs[0].id)}
+                    tamperingResult={tampResult}
+                    documentType={uploadedDocs[0].document_type}
+                  />
+                )}
+
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2 text-xs">
+                  <p className="font-semibold text-slate-200">Advisory Recommendation:</p>
+                  <p className="text-slate-300 font-mono">{tampResult.recommendation}</p>
+                  <p className="text-slate-500 text-[11px]">{tampResult.explanation}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="py-12 text-center space-y-3">
+                <SearchCode className="w-10 h-10 text-blue-400 mx-auto animate-pulse" />
+                <p className="text-sm text-slate-300">Ready to perform image forensics.</p>
+                <button
+                  onClick={handleStep5RunTampering}
+                  disabled={loading}
+                  className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold"
+                >
+                  {loading ? "Analyzing Pixels..." : "Run Tampering Forensics"}
+                </button>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center pt-4">
+              <button
+                onClick={() => setCurrentStep(4)}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-300 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleStep6RunFace}
+                disabled={loading}
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-600/30 transition-all"
+              >
+                <span>Proceed to Face Biometrics</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 6: FACE BIOMETRICS */}
+        {currentStep === 6 && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">Step 6: Biometric Face Verification</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  1:1 biometric comparison between document portrait crop and presented live selfie.
+                </p>
+              </div>
+              {faceResult && (
+                <StatusBadge status={faceResult.status} type="match" />
+              )}
+            </div>
+
+            {faceResult ? (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                    <span className="text-xs font-mono text-slate-400 uppercase">Biometric Match Score</span>
+                    <div className="flex items-baseline space-x-2">
+                      <span className="text-3xl font-bold font-mono text-white">
+                        {faceResult.similarity_score.toFixed(1)}%
+                      </span>
+                      <span className="text-xs text-slate-400 font-mono">(Confidence: {faceResult.confidence}%)</span>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
+                    <span className="text-xs font-mono text-slate-400 uppercase">Authentication Result</span>
+                    <p className={`text-xl font-bold font-mono ${faceResult.status === "MATCH" ? "text-emerald-400" : "text-rose-400"}`}>
+                      {faceResult.status}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl text-xs space-y-1">
+                  <p className="font-semibold text-slate-200">Biometric Explanatory Assessment:</p>
+                  <p className="text-slate-300 leading-relaxed font-mono">{faceResult.explanation}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="py-12 text-center space-y-3">
+                <Fingerprint className="w-10 h-10 text-blue-400 mx-auto animate-pulse" />
+                <p className="text-sm text-slate-300">Ready to run biometric matching.</p>
+                <button
+                  onClick={handleStep6RunFace}
+                  disabled={loading}
+                  className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold"
+                >
+                  {loading ? "Matching Features..." : "Verify Faces"}
+                </button>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center pt-4">
+              <button
+                onClick={() => setCurrentStep(5)}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-300 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleStep7RunRisk}
+                disabled={loading}
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-600/30 transition-all"
+              >
+                <span>Proceed to Risk Calculation</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 7: RISK ENGINE */}
+        {currentStep === 7 && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">Step 7: Explainable Risk Assessment</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Itemized score synthesis: OCR confidence, validation errors, tampering indicators, and biometrics.
+                </p>
+              </div>
+              {riskResult && (
+                <StatusBadge status={riskResult.classification} type="risk" />
+              )}
+            </div>
+
+            {riskResult ? (
+              <div className="space-y-6">
+                <RiskGauge
+                  score={riskResult.overall_score}
+                  classification={riskResult.classification}
+                  recommendation={riskResult.recommendation}
+                  size="lg"
+                />
+
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                    Contributing Risk Factor Breakdown
+                  </h3>
+                  <div className="divide-y divide-slate-800 border border-slate-800 rounded-xl overflow-hidden bg-slate-950">
+                    {riskResult.contributing_factors.map((f, i) => (
+                      <div key={i} className="p-3.5 flex items-center justify-between text-xs">
+                        <div className="space-y-0.5">
+                          <p className="font-semibold text-slate-200">{f.factor_name}</p>
+                          <p className="text-slate-400 text-[11px]">{f.description}</p>
+                        </div>
+                        <span className="font-mono text-sm font-bold text-rose-400 shrink-0 ml-4">
+                          +{f.contribution.toFixed(0)} pts
+                        </span>
+                      </div>
+                    ))}
+                    {riskResult.contributing_factors.length === 0 && (
+                      <div className="p-4 text-center text-xs text-emerald-400 font-mono">
+                        ✓ No elevated risk indicators detected. Standard clearance eligible.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="py-12 text-center space-y-3">
+                <Scale className="w-10 h-10 text-blue-400 mx-auto animate-pulse" />
+                <p className="text-sm text-slate-300">Ready to compute multi-factor risk score.</p>
+                <button
+                  onClick={handleStep7RunRisk}
+                  disabled={loading}
+                  className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold"
+                >
+                  {loading ? "Calculating..." : "Compute Risk Engine"}
+                </button>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center pt-4">
+              <button
+                onClick={() => setCurrentStep(6)}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-300 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleStep8BlockchainRegister}
+                disabled={loading}
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-600/30 transition-all"
+              >
+                <span>Anchor on Blockchain</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 8: BLOCKCHAIN PROOF */}
+        {currentStep === 8 && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">Step 8: Blockchain Proof Registration</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Cryptographic SHA-256 anchoring on Ethereum Sepolia / EVM Smart Contract. Zero personal data on-chain.
+                </p>
+              </div>
+              <StatusBadge status="CONFIRMED" type="blockchain" />
+            </div>
+
+            {blockchainResult ? (
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <span className="text-slate-400">Network:</span>
+                    <span className="text-blue-400 font-bold">{blockchainResult.network}</span>
+                  </div>
+                  <div className="flex flex-col space-y-1">
+                    <span className="text-slate-400">Contract Address:</span>
+                    <span className="text-slate-200 break-all">{blockchainResult.contract_address}</span>
+                  </div>
+                  <div className="flex flex-col space-y-1">
+                    <span className="text-slate-400">Transaction Hash:</span>
+                    <span className="text-emerald-400 break-all">{blockchainResult.tx_hash}</span>
+                  </div>
+                  <div className="flex flex-col space-y-1">
+                    <span className="text-slate-400">Document SHA-256 Hash:</span>
+                    <span className="text-indigo-400 break-all">{blockchainResult.document_hash}</span>
+                  </div>
+                  <div className="flex flex-col space-y-1">
+                    <span className="text-slate-400">Case Hash:</span>
+                    <span className="text-slate-300 break-all">{blockchainResult.case_hash}</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                    <span className="text-slate-400">Block Number:</span>
+                    <span className="text-slate-200">#{blockchainResult.block_number || 6842101}</span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-blue-950/40 border border-blue-800/80 rounded-lg text-xs text-blue-300 flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>
+                    Immutable integrity record successfully committed. This document can now be independently verified at any checkpoint.
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="py-12 text-center space-y-3">
+                <Boxes className="w-10 h-10 text-blue-400 mx-auto animate-pulse" />
+                <p className="text-sm text-slate-300">Ready to broadcast cryptographic proof transaction.</p>
+                <button
+                  onClick={handleStep8BlockchainRegister}
+                  disabled={loading}
+                  className="px-5 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold"
+                >
+                  {loading ? "Broadcasting..." : "Broadcast Proof to Blockchain"}
+                </button>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center pt-4">
+              <button
+                onClick={() => setCurrentStep(7)}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-300 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => setCurrentStep(9)}
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-600/30 transition-all"
+              >
+                <span>Finalize Officer Review</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 9: OFFICER REVIEW */}
+        {currentStep === 9 && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">Step 9: Authorized Officer Decision</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Record official determination, add security case notes, and generate the final PDF dossier.
+                </p>
+              </div>
+              {reviewResult && (
+                <StatusBadge status={reviewResult.decision} />
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                  Official Determination
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { val: "VERIFIED", label: "Approve & Clear", color: "hover:border-emerald-500 hover:bg-emerald-950/40" },
+                    { val: "SUSPICIOUS", label: "Flag Suspicious", color: "hover:border-amber-500 hover:bg-amber-950/40" },
+                    { val: "REJECTED", label: "Refuse Entry", color: "hover:border-rose-500 hover:bg-rose-950/40" },
+                    { val: "SUPERVISOR_REVIEW", label: "Escalate Supervisor", color: "hover:border-blue-500 hover:bg-blue-950/40" },
+                  ].map((btn) => (
+                    <button
+                      key={btn.val}
+                      type="button"
+                      onClick={() => setOfficerDecision(btn.val)}
+                      className={`p-3 rounded-xl border text-xs font-semibold transition-all text-center ${
+                        officerDecision === btn.val
+                          ? "border-blue-500 bg-blue-600/20 text-white ring-2 ring-blue-500"
+                          : `border-slate-800 bg-slate-950 text-slate-300 ${btn.color}`
+                      }`}
+                    >
+                      {btn.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Officer Forensic Case Notes
+                </label>
+                <textarea
+                  rows={3}
+                  value={officerNotes}
+                  onChange={(e) => setOfficerNotes(e.target.value)}
+                  placeholder="e.g. Cleared after reviewing multi-factor biometric similarity and tamper indicators..."
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs text-slate-100 font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  onClick={handleStep9SubmitReview}
+                  disabled={loading}
+                  className="flex-1 py-2.5 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center justify-center space-x-2 shadow transition-all disabled:opacity-50"
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>{loading ? "Recording Review..." : "Record Official Decision"}</span>
+                </button>
+
+                <button
+                  onClick={handleDownloadPDF}
+                  className="py-2.5 px-5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center space-x-2 border border-slate-700 transition-all"
+                >
+                  <Download className="w-4 h-4 text-blue-400" />
+                  <span>Download PDF Dossier</span>
+                </button>
+              </div>
+
+              {reviewResult && (
+                <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-800 text-emerald-300 text-xs font-mono space-y-1">
+                  <p className="font-bold">✓ Decision recorded successfully:</p>
+                  <p>Decision: {reviewResult.decision}</p>
+                  <p>Timestamp: {new Date(reviewResult.reviewed_at).toLocaleString()}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-between items-center pt-6 border-t border-slate-800">
+              <button
+                onClick={() => setCurrentStep(8)}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-300 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => router.push(`/cases/${activeCase?.id || ""}`)}
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs shadow-lg shadow-emerald-600/30 transition-all"
+              >
+                <span>View Full Completed Dossier</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
