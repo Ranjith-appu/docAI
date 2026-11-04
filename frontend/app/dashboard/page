@@ -1,0 +1,321 @@
+"use client";
+
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
+import {
+  FileCheck2,
+  ShieldCheck,
+  AlertTriangle,
+  ShieldAlert,
+  Clock,
+  PlusCircle,
+  Database,
+  ArrowUpRight,
+  Boxes,
+  ScanEye,
+  Fingerprint,
+} from "lucide-react";
+import { api } from "../../services/api";
+import { StatusBadge } from "../../components/StatusBadge";
+import { AnalyticsData, CaseItem } from "../../types";
+
+export default function DashboardPage() {
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [recentCases, setRecentCases] = useState<CaseItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [seeding, setSeeding] = useState(false);
+  const [seedNotice, setSeedNotice] = useState<string | null>(null);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [analyticsData, casesData] = await Promise.all([
+        api.getAnalytics(),
+        api.getCases(undefined, undefined),
+      ]);
+      setAnalytics(analyticsData);
+      setRecentCases(casesData.slice(0, 8));
+    } catch (err) {
+      console.error("Dashboard fetch error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleSeedDemo = async () => {
+    try {
+      setSeeding(true);
+      setSeedNotice(null);
+      const res = await api.seedDemoCases();
+      setSeedNotice(`✓ Successfully seeded 3 synthetic demo cases: ${res.cases.map(c => c.case_number).join(", ")}`);
+      await fetchData();
+    } catch (err: any) {
+      setSeedNotice(`Seed error: ${err.message}`);
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* Page Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-3">
+            Security Screening Operations
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Real-time biometric document integrity, automated fraud detection, and blockchain proof anchoring
+          </p>
+        </div>
+
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={handleSeedDemo}
+            disabled={seeding}
+            className="flex items-center space-x-2 px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs font-mono text-blue-300 border border-slate-700 transition-colors disabled:opacity-50"
+          >
+            <Database className="w-3.5 h-3.5 text-blue-400" />
+            <span>{seeding ? "Generating..." : "Load Demo Dataset"}</span>
+          </button>
+
+          <Link
+            href="/screening"
+            className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white shadow-lg shadow-blue-600/25 transition-all"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>New Screening</span>
+          </Link>
+        </div>
+      </div>
+
+      {seedNotice && (
+        <div className="p-3 rounded-lg bg-blue-950/80 border border-blue-800 text-blue-200 text-xs font-mono flex items-center justify-between">
+          <span>{seedNotice}</span>
+          <button onClick={() => setSeedNotice(null)} className="text-blue-400 hover:text-white">✕</button>
+        </div>
+      )}
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-medium uppercase tracking-wider">Total Screenings</span>
+            <FileCheck2 className="w-4 h-4 text-blue-400" />
+          </div>
+          <p className="text-2xl font-bold text-white font-mono">{analytics?.total_screenings ?? 0}</p>
+          <span className="text-[11px] text-slate-500 font-mono">100% auditable</span>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-medium uppercase tracking-wider">Verified</span>
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+          </div>
+          <p className="text-2xl font-bold text-emerald-400 font-mono">{analytics?.verified_count ?? 0}</p>
+          <span className="text-[11px] text-emerald-500/80 font-mono">Low risk cleared</span>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-medium uppercase tracking-wider">Suspicious</span>
+            <AlertTriangle className="w-4 h-4 text-amber-400" />
+          </div>
+          <p className="text-2xl font-bold text-amber-400 font-mono">{analytics?.suspicious_count ?? 0}</p>
+          <span className="text-[11px] text-amber-500/80 font-mono">Mismatches / anomalies</span>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-medium uppercase tracking-wider">High Risk</span>
+            <ShieldAlert className="w-4 h-4 text-rose-400" />
+          </div>
+          <p className="text-2xl font-bold text-rose-400 font-mono">{analytics?.high_risk_count ?? 0}</p>
+          <span className="text-[11px] text-rose-500/80 font-mono">Supervisor review</span>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 col-span-2 md:col-span-1">
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-medium uppercase tracking-wider">On-Chain Proofs</span>
+            <Boxes className="w-4 h-4 text-indigo-400" />
+          </div>
+          <p className="text-2xl font-bold text-indigo-300 font-mono">{analytics?.blockchain_registrations_count ?? 0}</p>
+          <span className="text-[11px] text-indigo-400/80 font-mono">Sepolia anchored</span>
+        </div>
+      </div>
+
+      {/* Visual Analytics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Risk Distribution Card */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              Risk Classification
+            </h3>
+            <span className="text-[10px] text-slate-500 font-mono">Active Model</span>
+          </div>
+
+          <div className="space-y-3">
+            {[
+              { label: "Low Risk (0-24)", count: analytics?.risk_distribution?.LOW || 0, color: "bg-emerald-500", text: "text-emerald-400" },
+              { label: "Medium Risk (25-49)", count: analytics?.risk_distribution?.MEDIUM || 0, color: "bg-amber-500", text: "text-amber-400" },
+              { label: "High Risk (50-74)", count: analytics?.risk_distribution?.HIGH || 0, color: "bg-orange-500", text: "text-orange-400" },
+              { label: "Critical Risk (75-100)", count: analytics?.risk_distribution?.CRITICAL || 0, color: "bg-rose-500", text: "text-rose-400" },
+            ].map((item) => {
+              const total = analytics?.total_screenings || 1;
+              const pct = Math.round((item.count / total) * 100);
+              return (
+                <div key={item.label} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <span className="text-slate-400">{item.label}</span>
+                    <span className={`font-semibold ${item.text}`}>{item.count} ({pct}%)</span>
+                  </div>
+                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div className={`h-full ${item.color} rounded-full`} style={{ width: `${Math.max(4, pct)}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* AI Forensics & Biometric Performance */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              AI Detection Telemetry
+            </h3>
+            <span className="text-[10px] text-slate-500 font-mono">Telemetry</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <div className="p-3.5 bg-slate-950 rounded-lg border border-slate-800/80">
+              <ScanEye className="w-4 h-4 text-amber-400 mb-1" />
+              <p className="text-xs text-slate-400">Tampering Flags</p>
+              <p className="text-xl font-bold text-slate-200 font-mono mt-1">
+                {analytics?.tampering_detected_count ?? 0}
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1">ELA & Edge forensics</p>
+            </div>
+
+            <div className="p-3.5 bg-slate-950 rounded-lg border border-slate-800/80">
+              <Fingerprint className="w-4 h-4 text-rose-400 mb-1" />
+              <p className="text-xs text-slate-400">Face Mismatches</p>
+              <p className="text-xl font-bold text-slate-200 font-mono mt-1">
+                {analytics?.face_mismatch_count ?? 0}
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1">Biometric divergence</p>
+            </div>
+          </div>
+
+          <div className="p-3 bg-slate-950 rounded-lg border border-slate-800/80 text-xs flex items-center justify-between">
+            <span className="text-slate-400">Avg Inference Latency</span>
+            <span className="font-mono text-blue-400 font-semibold">{analytics?.average_processing_seconds ?? 3.2}s</span>
+          </div>
+        </div>
+
+        {/* Document Types Breakdown */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              Screened Document Types
+            </h3>
+            <span className="text-[10px] text-slate-500 font-mono">Distribution</span>
+          </div>
+
+          <div className="space-y-3">
+            {analytics?.document_type_distribution &&
+              Object.entries(analytics.document_type_distribution).map(([dtype, count]) => {
+                const total = analytics.total_screenings || 1;
+                const pct = Math.round((count / total) * 100);
+                return (
+                  <div key={dtype} className="flex items-center justify-between text-xs p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 font-mono">
+                    <span className="text-slate-300">{dtype}</span>
+                    <span className="text-blue-400 font-bold">{count} ({pct}%)</span>
+                  </div>
+                );
+              })}
+            {(!analytics?.document_type_distribution || Object.keys(analytics.document_type_distribution).length === 0) && (
+              <p className="text-xs text-slate-500 py-6 text-center">No documents analyzed yet.</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Screening Cases Table */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+              Recent Screening Cases
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Live case feed with risk assessment and officer review statuses
+            </p>
+          </div>
+          <Link
+            href="/cases"
+            className="text-xs text-blue-400 hover:text-blue-300 font-mono flex items-center gap-1"
+          >
+            <span>View All Cases</span>
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-slate-800 bg-slate-950/60 font-mono text-slate-400 uppercase tracking-wider">
+                <th className="py-3 px-6">Case Number</th>
+                <th className="py-3 px-6">Applicant Name</th>
+                <th className="py-3 px-6">Document Type</th>
+                <th className="py-3 px-6">Status</th>
+                <th className="py-3 px-6">Created</th>
+                <th className="py-3 px-6 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/60">
+              {recentCases.map((c) => (
+                <tr key={c.id} className="hover:bg-slate-800/40 transition-colors">
+                  <td className="py-3.5 px-6 font-mono font-medium text-blue-400">
+                    <Link href={`/cases/${c.id}`} className="hover:underline">
+                      {c.case_number}
+                    </Link>
+                  </td>
+                  <td className="py-3.5 px-6 font-medium text-slate-200">{c.applicant_name}</td>
+                  <td className="py-3.5 px-6 font-mono text-slate-400">{c.document_type}</td>
+                  <td className="py-3.5 px-6">
+                    <StatusBadge status={c.status} />
+                  </td>
+                  <td className="py-3.5 px-6 text-slate-400 font-mono">
+                    {new Date(c.created_at).toLocaleString()}
+                  </td>
+                  <td className="py-3.5 px-6 text-right">
+                    <Link
+                      href={`/cases/${c.id}`}
+                      className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-mono text-[11px] transition-colors"
+                    >
+                      Inspect Dossier
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+
+              {recentCases.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-slate-500">
+                    No screening cases recorded yet. Click &quot;Load Demo Dataset&quot; or &quot;New Screening&quot; to begin.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
