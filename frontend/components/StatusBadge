@@ -1,0 +1,61 @@
+import React from "react";
+
+interface StatusBadgeProps {
+  status: string;
+  type?: "status" | "risk" | "blockchain" | "match";
+}
+
+export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, type = "status" }) => {
+  const s = status.toUpperCase();
+
+  let colorClasses = "bg-gray-800 text-gray-300 border-gray-700";
+
+  if (type === "risk") {
+    if (s === "LOW") {
+      colorClasses = "bg-emerald-950/80 text-emerald-300 border-emerald-800";
+    } else if (s === "MEDIUM") {
+      colorClasses = "bg-amber-950/80 text-amber-300 border-amber-800";
+    } else if (s === "HIGH") {
+      colorClasses = "bg-orange-950/80 text-orange-300 border-orange-800";
+    } else if (s === "CRITICAL") {
+      colorClasses = "bg-rose-950/80 text-rose-300 border-rose-800";
+    }
+  } else if (type === "match") {
+    if (s === "MATCH") {
+      colorClasses = "bg-emerald-950/80 text-emerald-300 border-emerald-800";
+    } else if (s === "MISMATCH") {
+      colorClasses = "bg-rose-950/80 text-rose-300 border-rose-800";
+    } else {
+      colorClasses = "bg-amber-950/80 text-amber-300 border-amber-800";
+    }
+  } else if (type === "blockchain") {
+    if (s === "CONFIRMED" || s === "VERIFIED" || s === "MATCH") {
+      colorClasses = "bg-blue-950/80 text-blue-300 border-blue-800";
+    } else if (s === "PENDING") {
+      colorClasses = "bg-amber-950/80 text-amber-300 border-amber-800";
+    } else {
+      colorClasses = "bg-rose-950/80 text-rose-300 border-rose-800";
+    }
+  } else {
+    // Standard case status
+    if (s === "VERIFIED") {
+      colorClasses = "bg-emerald-950/80 text-emerald-300 border-emerald-800";
+    } else if (s === "SUSPICIOUS" || s === "REJECTED") {
+      colorClasses = "bg-rose-950/80 text-rose-300 border-rose-800";
+    } else if (s === "REVIEW_REQUIRED") {
+      colorClasses = "bg-amber-950/80 text-amber-300 border-amber-800";
+    } else if (s === "PROCESSING") {
+      colorClasses = "bg-sky-950/80 text-sky-300 border-sky-800 animate-pulse";
+    } else {
+      colorClasses = "bg-gray-800 text-gray-300 border-gray-700";
+    }
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${colorClasses}`}
+    >
+      {s.replace("_", " ")}
+    </span>
+  );
+};
